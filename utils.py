@@ -205,7 +205,26 @@ def validate_inputs(inputs: Dict[str, float], feature_names: List[str]) -> Tuple
     # 4. Return (True, "OK") if valid
     # 5. Return (False, error_message) if not valid
     
-    pass
+    input_features = list(inputs.keys())
+    
+    if set(input_features) != set(feature_names):
+        return False, "Error: NOT all required features are present"
+    
+    for feature in feature_names:
+        if inputs[feature] < Config.VARIABLE_RANGES[feature]['min'] or inputs[feature] > Config.VARIABLE_RANGES[feature]['max']:
+            return False, "Error: values are NOT within expected ranges"
+    
+    for v in inputs.values():
+        if pd.isnull(v) or np.isinf(v):
+            return False, "Error: there are NaN of infinite in the inputs"
+        
+    return True, 'OK'
+    
+    
+ 
+    
+    
+    
 
 
 def create_input_dataframe(inputs: Dict[str, float], feature_names: List[str]) -> pd.DataFrame:
@@ -224,13 +243,15 @@ def create_input_dataframe(inputs: Dict[str, float], feature_names: List[str]) -
     input_df : pd.DataFrame
         Single row DataFrame with features in correct order
     """
-    # TODO:
-    # 1. Create DataFrame from inputs dict
-    # 2. Reorder columns to match feature_names order
-    # 3. Ensure shape is (1, n_features)
-    # 4. Return DataFrame
     
-    pass
+    inputs_reordered = {key:inputs[key] for key in feature_names}
+    
+    inputs_df = pd.DataFrame([inputs_reordered])
+    
+    assert inputs_df.shape == (1, len(feature_names)), \
+        f"Expected shape (1, {len(feature_names)}), got {inputs_df.shape}"
+    
+    return inputs_df
 
 
 def scale_inputs(input_df: pd.DataFrame, scaler) -> np.ndarray:
@@ -249,12 +270,14 @@ def scale_inputs(input_df: pd.DataFrame, scaler) -> np.ndarray:
     scaled_inputs : np.ndarray
         Scaled input array (1, n_features)
     """
-    # TODO:
-    # 1. Apply scaler.transform() to input_df
-    # 2. Return as numpy array
-    # 3. Handle errors
     
-    pass
+    try:
+        input_scaled = scaler.transform(input_df)
+        input_scaled = np.array(input_scaled)
+        return input_scaled
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to scale inputs: {str(e)}")    
 
 
 # ============================================================================
@@ -277,13 +300,10 @@ def predict_purity(scaled_inputs: np.ndarray, model) -> float:
     prediction : float
         Predicted purity value
     """
-    # TODO:
-    # 1. Call model.predict(scaled_inputs)
-    # 2. Extract scalar value from result
-    # 3. Clip to valid range [0, 1] if needed
-    # 4. Return as float
+
+    purity = float(model.predict(scaled_inputs)[0])
     
-    pass
+    return purity
 
 
 def get_prediction_status(purity: float) -> Tuple[str, str, str]:
@@ -304,12 +324,13 @@ def get_prediction_status(purity: float) -> Tuple[str, str, str]:
     emoji : str
         Status emoji
     """
-    # TODO:
-    # 1. If purity > 0.85: return ('Good', 'green', '✅')
-    # 2. Elif purity > 0.75: return ('Acceptable', 'orange', '⚠️')
-    # 3. Else: return ('Poor', 'red', '❌')
+    if purity > 0.85: 
+        return ('Good', 'green', '✅')
+    elif purity > 0.75: 
+        return ('Acceptable', 'orange', '⚠️')
+    else:
+        return ('Poor', 'red', '❌')
     
-    pass
 
 
 def get_feature_importance(model, feature_names: List[str], top_n: int = 15) -> pd.DataFrame:
@@ -331,13 +352,15 @@ def get_feature_importance(model, feature_names: List[str], top_n: int = 15) -> 
         DataFrame with columns ['Feature', 'Importance']
         Sorted by importance descending
     """
-    # TODO:
-    # 1. Extract feature_importances_ from model
-    # 2. Create DataFrame with feature_names and importances
-    # 3. Sort by importance descending
-    # 4. Return top_n rows
+   
+    importance_df = pd.DataFrame({
+    'Feature': model.feature_names_in_,
+    'Importance': model.feature_importances_
+    })
+
+    importance_df = importance_df.sort_values(by='Importance', ascending=False).head(top_n)
     
-    pass
+    return importance_df
 
 
 # ============================================================================
@@ -353,10 +376,8 @@ def get_model_performance() -> Dict[str, float]:
     metrics : Dict[str, float]
         Dictionary with keys: 'r2', 'rmse', 'mae'
     """
-    # TODO:
-    # Return Config.TEST_R2, TEST_RMSE, TEST_MAE as dictionary
     
-    pass
+    return {'r2':Config.TEST_R2, 'rmse':Config.TEST_RMSE, 'mae':Config.TEST_MAE}
 
 
 def format_purity_display(purity: float, target: float = 0.90) -> Dict:
@@ -375,12 +396,10 @@ def format_purity_display(purity: float, target: float = 0.90) -> Dict:
     display_dict : Dict
         Contains: 'purity', 'target', 'difference', 'difference_pct'
     """
-    # TODO:
-    # 1. Calculate difference = purity - target
-    # 2. Calculate percentage difference
-    # 3. Return dict with formatted values
+        
+    display_dict = {'purity':round(purity,4), 'target':round(target,4), 'difference':round((purity-target), 4), 'difference_pct':round(100*((purity-target)/target), 2)}
     
-    pass
+    return display_dict
 
 
 # ============================================================================
@@ -403,10 +422,19 @@ def create_error_message(error: Exception, context: str) -> str:
     message : str
         User-friendly error message
     """
-    # TODO:
-    # 1. Create message explaining what went wrong
-    # 2. Avoid technical jargon if possible
-    # 3. Suggest next steps
-    # 4. Return message string
     
-    pass
+    error_type = type(error).__name__
+    error_msg = str(error)
+    
+    # Simple message
+    message = (
+        f"❌ Error while {context}\n\n"
+        f"**Problem:** {error_type}\n"
+        f"**Details:** {error_msg}\n\n"
+        f"**What to do:**\n"
+        f"- Check that all files are in correct folders\n"
+        f"- Verify your inputs are valid\n"
+        f"- Try again or restart the app"
+    )
+    
+    return message

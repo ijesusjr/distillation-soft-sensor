@@ -4,8 +4,6 @@ Distillation Column Soft-Sensor Predictor
 
 Interactive web application for real-time purity prediction 
 using machine learning model trained on distillation column data.
-
-This is the main Streamlit app entry point.
 """
 
 import streamlit as st
@@ -14,8 +12,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
-import joblib
 import warnings
+
+# Import all functions from utils
+from utils import (
+    Config,
+    load_model,
+    load_scaler,
+    load_feature_names,
+    validate_inputs,
+    create_input_dataframe,
+    scale_inputs,
+    predict_purity,
+    get_prediction_status,
+    get_feature_importance,
+    get_model_performance,
+    format_purity_display
+)
 
 warnings.filterwarnings('ignore')
 
@@ -35,82 +48,44 @@ sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (10, 6)
 
 # ============================================================================
-# LOAD MODELS AND DATA
+# LOAD MODELS AND DATA (with caching)
 # ============================================================================
 
 @st.cache_resource
-def load_models():
-    """
-    Load pre-trained model and scaler
-    
-    TODO:
-    - Load XGBoost model from models/xgb_model.pkl
-    - Load scaler from models/scaler.pkl
-    - Return both in a dictionary
-    - Add error handling if files not found
-    """
-    pass
+def get_model():
+    """Load and cache the model"""
+    return load_model()
+
+@st.cache_resource
+def get_scaler():
+    """Load and cache the scaler"""
+    return load_scaler()
 
 @st.cache_data
-def load_feature_names():
-    """
-    Load feature names from training data
-    
-    TODO:
-    - Load X_ml_features.csv
-    - Extract column names
-    - Return as list
-    """
-    pass
+def get_features():
+    """Load and cache feature names"""
+    return load_feature_names()
 
 @st.cache_data
-def load_feature_importance():
-    """
-    Load pre-calculated feature importance
-    
-    TODO:
-    - Load feature importance from saved data or calculate from model
-    - Return DataFrame with columns: ['Feature', 'Importance']
-    """
-    pass
+def get_importance():
+    """Load and cache feature importance"""
+    model = get_model()
+    features = get_features()
+    return get_feature_importance(model, features, top_n=15)
 
 # ============================================================================
-# HELPER FUNCTIONS
+# REST OF YOUR APP CODE (sidebar, predictions, etc.)
 # ============================================================================
 
-def scale_inputs(inputs_df, scaler):
-    """
-    Scale user inputs using the trained scaler
-    
-    TODO:
-    - Take DataFrame of user inputs
-    - Apply scaler.transform()
-    - Return scaled array
-    """
-    pass
+# Load everything at startup
+try:
+    model = get_model()
+    scaler = get_scaler()
+    feature_names = get_features()
+except Exception as e:
+    st.error(f"❌ Failed to load model: {str(e)}")
+    st.stop()
 
-def predict_purity(scaled_inputs, model):
-    """
-    Make prediction using XGBoost model
-    
-    TODO:
-    - Take scaled inputs
-    - Call model.predict()
-    - Return predicted purity value
-    """
-    pass
-
-def get_purity_status(purity_value):
-    """
-    Determine if purity is good/acceptable/bad
-    
-    TODO:
-    - If purity > 0.85: return 'good', 'green'
-    - If purity 0.75-0.85: return 'acceptable', 'yellow'
-    - If purity < 0.75: return 'poor', 'red'
-    - Return tuple: (status, color)
-    """
-    pass
 
 # ============================================================================
 # HEADER SECTION
@@ -145,24 +120,46 @@ st.markdown("""
 st.sidebar.header("⚙️ Process Variables Input")
 st.sidebar.markdown("Set the current process conditions")
 
-# TODO: Create input controls
-# For each key process variable:
-# - Create slider or number input
-# - Set realistic min/max ranges
-# - Store in a dictionary
-# 
-# Questions to answer first:
-# 1. What are the column names in your X_ml_features.csv? (e.g., 'D', 'L', 'V', 'F', etc.)
-# 2. What are realistic ranges for each? (check from your EDA notebook)
-# 3. Which variables are most important? (lagged features? raw features?)
-#
-# Example structure:
-# temperature_top = st.sidebar.slider('Temperature Top (°C)', min_value=50, max_value=150, value=100)
-# reflux_ratio = st.sidebar.slider('Reflux Ratio', min_value=1.0, max_value=10.0, value=3.5)
-# etc.
-
-# Placeholder - replace with actual variable inputs
 st.sidebar.info("Input controls will be populated based on your feature names")
+
+main_variables = {
+    'T1': {'min': 350.76, 'max': 352.32, 'default': 350.91},
+    'T4': {'min': 350.79, 'max': 368.6, 'default': 351.32},
+    'T5': {'min': 350.8, 'max': 369.06, 'default': 351.62},
+    'T6': {'min': 350.82, 'max': 372.57, 'default': 352.05},
+    'T7': {'min': 350.86, 'max': 372.97, 'default': 352.64},
+    'T13': {'min': 353.15, 'max': 373.06, 'default': 370.85},
+    'T14': {'min': 354.52, 'max': 373.07, 'default': 372.83},
+    'L': {'min': 75.0, 'max': 1950.0, 'default': 780.0},
+    'D': {'min': 150.0, 'max': 350.0, 'default': 260.0},
+    'F': {'min': 350.0, 'max': 650.0, 'default': 600.0},
+    'B': {'min': 90.0, 'max': 450.0, 'default': 300.0},
+}
+
+user_inputs = {}
+for var_name, config in main_variables.items():
+    value = st.sidebar.slider(
+        f'{var_name}',
+        min_value=config['min'],
+        max_value=config['max'],
+        value=config['default']
+    )
+    user_inputs[var_name] = value
+    
+# Fill in lagged features (assume constant)
+for var_name in main_variables:
+    for lag in [1, 5, 10, 30, 60, 240]:
+        lagged_name = f'{var_name}_lag{lag}'
+        if lagged_name in feature_names:
+            user_inputs[lagged_name] = user_inputs[var_name]
+
+# Add time features (current hour)
+import datetime
+now = datetime.datetime.now()
+hour = now.hour / 24.0  # 0-1
+user_inputs['hour_of_day_sin'] = np.sin(2 * np.pi * hour)
+user_inputs['hour_of_day_cos'] = np.cos(2 * np.pi * hour)
+
 
 # Predict button
 st.sidebar.markdown("---")
@@ -172,36 +169,54 @@ predict_button = st.sidebar.button("🔮 Make Prediction", key="predict_btn")
 # MAIN CONTENT - PREDICTION DISPLAY
 # ============================================================================
 
+# ============================================================================
+# MAIN CONTENT - PREDICTION DISPLAY
+# ============================================================================
+
 if predict_button:
-    st.markdown("## 📊 Prediction Results")
-    
-    # TODO: 
-    # 1. Collect all user inputs into a DataFrame
-    # 2. Scale the inputs
-    # 3. Make prediction
-    # 4. Determine status (good/acceptable/poor)
-    # 5. Display results
-    
-    # Placeholder metrics
-    col1, col2, col3 = st.columns([2, 2, 2])
-    
-    with col1:
-        # TODO: Display predicted purity in large metric
-        st.metric("Predicted Purity", "0.85")
-    
-    with col2:
-        # TODO: Display target/setpoint if available
-        st.metric("Target Purity", "0.90")
-    
-    with col3:
-        # TODO: Display difference
-        st.metric("Difference", "-0.05", delta="-5%", delta_color="inverse")
-    
-    # TODO: Add color-coded status indicator
-    # If status == 'good': show green box
-    # If status == 'acceptable': show yellow box
-    # If status == 'poor': show red box
-    
+    try:
+        # Step 1: Validate inputs
+        is_valid, message = validate_inputs(user_inputs, feature_names)
+        
+        if not is_valid:
+            st.error(f"❌ {message}")
+        else:
+            # Step 2: Create DataFrame and scale
+            input_df = create_input_dataframe(user_inputs, feature_names)
+            scaled_inputs = scale_inputs(input_df, scaler)
+            
+            # Step 3: Make prediction
+            purity = predict_purity(scaled_inputs, model)
+            
+            # Step 4: Get status
+            status, color, emoji = get_prediction_status(purity)
+            
+            # Step 5: Format for display
+            display = format_purity_display(purity, target=0.90)
+            
+            # Step 6: Display results
+            st.markdown("## 📊 Prediction Results")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Predicted Purity", f"{display['purity']:.4f}", emoji)
+            
+            with col2:
+                st.metric("Target Purity", f"{display['target']:.4f}")
+            
+            with col3:
+                st.metric("Difference", 
+                         f"{display['difference']:.4f}",
+                         delta=f"{display['difference_pct']:.2f}%",
+                         delta_color="inverse")
+            
+            # Status indicator
+            st.markdown(f"### Status: {emoji} {status}")
+            
+    except Exception as e:
+        st.error(f"❌ Error making prediction: {str(e)}")
+
 else:
     st.info("👈 Set process variables in the sidebar and click 'Make Prediction' to get started")
 
@@ -209,74 +224,77 @@ else:
 # FEATURE IMPORTANCE SECTION
 # ============================================================================
 
+
 with st.expander("📈 Model Explanation - Feature Importance"):
-    st.markdown("""
-        ### Top Features Affecting Purity Prediction
-        The chart below shows which process variables have the most influence on the purity prediction.
-    """)
+    st.markdown("### Top Features Affecting Purity Prediction")
     
-    # TODO:
-    # 1. Load feature importance data
-    # 2. Get top 15 features
-    # 3. Create horizontal bar chart
-    # 4. Display in streamlit
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # TODO: Create and display feature importance chart
-        st.markdown("*Feature importance chart will appear here*")
-    
-    with col2:
+    try:
+        importance_df = get_importance()
+        
+        # Create chart
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.barh(importance_df['Feature'], importance_df['Importance'], color='steelblue')
+        ax.set_xlabel('Importance Score')
+        ax.set_title('Top 15 Most Important Features')
+        ax.invert_yaxis()
+        
+        st.pyplot(fig)
+        
         st.markdown("""
             **Interpretation:**
             - Longer bars = more important features
-            - Green = positive impact on purity
-            - Red = negative impact on purity
+            - Features at the top have the most influence on purity prediction
         """)
+        
+    except Exception as e:
+        st.error(f"Failed to load feature importance: {str(e)}")
 
 # ============================================================================
-# HISTORICAL PERFORMANCE SECTION
+# MODEL INFO & ABOUT
 # ============================================================================
 
-with st.expander("📉 Historical Performance & Model Info"):
+with st.expander("ℹ️ Model Information"):
+    st.markdown("### Model Performance (Test Set)")
     
-    st.markdown("### Model Performance on Test Data")
-    
-    # TODO:
-    # 1. Calculate or load test metrics
-    # 2. Create summary table
-    # 3. Display residual distribution
+    metrics = get_model_performance()
     
     perf_col1, perf_col2, perf_col3 = st.columns(3)
     
     with perf_col1:
-        st.metric("R² Score (Test)", "0.9998")
+        st.metric("R² Score", f"{metrics['r2']:.4f}")
     with perf_col2:
-        st.metric("RMSE (Test)", "0.0010")
+        st.metric("RMSE", f"{metrics['rmse']:.4f}")
     with perf_col3:
-        st.metric("MAE (Test)", "0.0008")
+        st.metric("MAE", f"{metrics['mae']:.4f}")
     
-    st.markdown("---")
-    
-    st.markdown("### Model Training Information")
-    
-    # TODO: Display model metadata
-    # - Training date
-    # - Number of samples used
-    # - Number of features
-    # - Train/test split ratio
-    
-    info_dict = {
-        "Training Date": "2024-12-XX",
-        "Samples Used": "~3000",
-        "Number of Features": "~50",
-        "Train/Test Split": "70/30",
-        "Model Algorithm": "XGBoost"
-    }
-    
-    for key, value in info_dict.items():
-        st.write(f"**{key}:** {value}")
+    st.markdown("""
+        ### Model Details
+        - **Algorithm:** XGBoost Regressor
+        - **Training Data:** Simulated distillation column (4,408 samples)
+        - **Features:** 30 engineered features (lagged, rolling, cyclic)
+        - **Training Split:** 70% train, 30% test
+        
+        ### Limitations
+        - Trained on simulated data with synthetic noise
+        - Real plant performance may be 10-15% lower
+        - Best accuracy for purity values 0.75-0.95
+        - Assumes steady-state operation
+    """)
+
+with st.expander("❓ Help & FAQ"):
+    st.markdown("""
+        ### How to Use
+        1. Set process variables in the sidebar
+        2. Click "Make Prediction"
+        3. View predicted purity and status
+        4. Check feature importance to understand why
+        
+        ### What Do the Colors Mean?
+        - 🟢 **Green (>0.85):** Good purity
+        - 🟡 **Orange (0.75-0.85):** Acceptable purity
+        - 🔴 **Red (<0.75):** Poor purity
+    """)
+
 
 # ============================================================================
 # ABOUT & LIMITATIONS SECTION
