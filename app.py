@@ -280,9 +280,11 @@ with st.expander("📊 Model Interpretation - Feature Coefficients"):
         
         display_df = coef_df[['Feature', 'Coefficient', 'Abs_Coefficient']].copy()
         display_df.columns = ['Feature', 'Coefficient (Scaled)', 'Absolute Impact']
+        
+        # Create Direction column BEFORE formatting (when values are still numeric)
         display_df['Direction'] = display_df['Coefficient (Scaled)'].apply(lambda x: '↑ Positive' if x > 0 else '↓ Negative')
         
-        # Format for display
+        # NOW format for display (after we've used the numeric values)
         display_df['Coefficient (Scaled)'] = display_df['Coefficient (Scaled)'].apply(lambda x: f"{x:+.6f}")
         display_df['Absolute Impact'] = display_df['Absolute Impact'].apply(lambda x: f"{x:.6f}")
         
