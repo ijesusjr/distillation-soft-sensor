@@ -1,6 +1,6 @@
 """
-Utility Functions for Distillation Soft-Sensor
-==============================================
+Utility Functions for Distillation Soft-Sensor (Linear Regression)
+==================================================================
 
 Helper functions for data preprocessing, scaling, and predictions.
 """
@@ -28,17 +28,16 @@ class Config:
     
     # File paths
     SCALER_PATH = MODEL_DIR / "scaler.pkl"
-    MODEL_PATH = MODEL_DIR / "xgb_model.pkl"
+    MODEL_PATH = MODEL_DIR / "lr_model.pkl"  # Linear Regression model
     FEATURES_PATH = DATA_DIR / "X_ml_features.csv"
     TARGET_PATH = DATA_DIR / "y_ml_target.csv"
     
-    # Model performance metrics (from the test set)
-    TEST_R2 = 0.9998
-    TEST_RMSE = 0.0010
-    TEST_MAE = 0.0008
+    # Model performance metrics (Linear Regression on test set)
+    TEST_R2 = 0.9859
+    TEST_RMSE = 0.0080
+    TEST_MAE = 0.0062
     
     # Process variable ranges (from EDA)
-
     VARIABLE_RANGES = {'T1': {'min': 350.76, 'max': 352.32, 'default': 350.91},
                         'T5_lag5': {'min': 350.8, 'max': 369.06, 'default': 351.62},
                         'T5_lag30': {'min': 350.8, 'max': 369.06, 'default': 351.6},
@@ -87,7 +86,7 @@ class Config:
 
 def load_model(model_path: Path = Config.MODEL_PATH):
     """
-    Load trained XGBoost model
+    Load trained Linear Regression model
     
     Parameters:
     -----------
@@ -96,8 +95,8 @@ def load_model(model_path: Path = Config.MODEL_PATH):
     
     Returns:
     --------
-    model : XGBRegressor
-        Trained XGBoost model
+    model : LinearRegression
+        Trained Linear Regression model
     
     Raises:
     -------
@@ -110,7 +109,7 @@ def load_model(model_path: Path = Config.MODEL_PATH):
             raise FileNotFoundError(f"Model not found at {model_path}")
         
         model = joblib.load(model_path)
-        print(f"Model loaded from {model_path}")
+        print(f"Linear Regression model loaded from {model_path}")
         return model
         
     except Exception as e:
@@ -198,12 +197,6 @@ def validate_inputs(inputs: Dict[str, float], feature_names: List[str]) -> Tuple
     message : str
         Validation message or error description
     """
-    # TODO:
-    # 1. Check all required features are present
-    # 2. Check values are within expected ranges
-    # 3. Check for NaN or infinite values
-    # 4. Return (True, "OK") if valid
-    # 5. Return (False, error_message) if not valid
     
     input_features = list(inputs.keys())
     
@@ -211,22 +204,17 @@ def validate_inputs(inputs: Dict[str, float], feature_names: List[str]) -> Tuple
         return False, "Error: NOT all required features are present"
     
     for feature in feature_names:
-        if inputs[feature] < Config.VARIABLE_RANGES[feature]['min'] or inputs[feature] > Config.VARIABLE_RANGES[feature]['max']:
-            return False, "Error: values are NOT within expected ranges"
+        if feature in Config.VARIABLE_RANGES:
+            if inputs[feature] < Config.VARIABLE_RANGES[feature]['min'] or inputs[feature] > Config.VARIABLE_RANGES[feature]['max']:
+                return False, f"Error: {feature} value is outside expected range"
     
     for v in inputs.values():
         if pd.isnull(v) or np.isinf(v):
-            return False, "Error: there are NaN of infinite in the inputs"
+            return False, "Error: there are NaN or infinite values in the inputs"
         
     return True, 'OK'
     
     
- 
-    
-    
-    
-
-
 def create_input_dataframe(inputs: Dict[str, float], feature_names: List[str]) -> pd.DataFrame:
     """
     Create DataFrame from user inputs in correct feature order
@@ -244,8 +232,7 @@ def create_input_dataframe(inputs: Dict[str, float], feature_names: List[str]) -
         Single row DataFrame with features in correct order
     """
     
-    inputs_reordered = {key:inputs[key] for key in feature_names}
-    
+    inputs_reordered = {key: inputs[key] for key in feature_names}
     inputs_df = pd.DataFrame([inputs_reordered])
     
     assert inputs_df.shape == (1, len(feature_names)), \
@@ -292,16 +279,18 @@ def predict_purity(scaled_inputs: np.ndarray, model) -> float:
     -----------
     scaled_inputs : np.ndarray
         Scaled input features (1, n_features)
-    model : XGBRegressor
-        Trained XGBoost model
+    model : LinearRegression
+        Trained Linear Regression model
     
     Returns:
     --------
     prediction : float
-        Predicted purity value
+        Predicted purity value (clipped to [0, 1])
     """
 
     purity = float(model.predict(scaled_inputs)[0])
+    # Clip to valid purity range
+    purity = np.clip(purity, 0, 1)
     
     return purity
 
@@ -324,43 +313,44 @@ def get_prediction_status(purity: float) -> Tuple[str, str, str]:
     emoji : str
         Status emoji
     """
-    if purity > 0.85: 
+    if purity >= Config.PURITY_THRESHOLDS['good']: 
         return ('Good', 'green', '✅')
-    elif purity > 0.75: 
+    elif purity >= Config.PURITY_THRESHOLDS['acceptable']: 
         return ('Acceptable', 'orange', '⚠️')
     else:
         return ('Poor', 'red', '❌')
     
 
 
-def get_feature_importance(model, feature_names: List[str], top_n: int = 15) -> pd.DataFrame:
+def get_feature_coefficients(model, feature_names: List[str], top_n: int = 15) -> pd.DataFrame:
     """
-    Get feature importance from trained model
+    Get feature coefficients from trained Linear Regression model
     
     Parameters:
     -----------
-    model : XGBRegressor
-        Trained XGBoost model
+    model : LinearRegression
+        Trained Linear Regression model
     feature_names : List[str]
-        Feature names corresponding to model
+        Feature names corresponding to model coefficients
     top_n : int
-        Number of top features to return
+        Number of top features to return (by absolute coefficient)
     
     Returns:
     --------
-    importance_df : pd.DataFrame
-        DataFrame with columns ['Feature', 'Importance']
-        Sorted by importance descending
+    coef_df : pd.DataFrame
+        DataFrame with columns ['Feature', 'Coefficient', 'Abs_Coefficient']
+        Sorted by absolute coefficient value (descending)
     """
    
-    importance_df = pd.DataFrame({
-    'Feature': model.feature_names_in_,
-    'Importance': model.feature_importances_
+    coef_df = pd.DataFrame({
+        'Feature': feature_names,
+        'Coefficient': model.coef_.flatten()
     })
 
-    importance_df = importance_df.sort_values(by='Importance', ascending=False).head(top_n)
+    coef_df['Abs_Coefficient'] = coef_df['Coefficient'].abs()
+    coef_df = coef_df.sort_values(by='Abs_Coefficient', ascending=False).head(top_n)
     
-    return importance_df
+    return coef_df
 
 
 # ============================================================================
@@ -377,7 +367,11 @@ def get_model_performance() -> Dict[str, float]:
         Dictionary with keys: 'r2', 'rmse', 'mae'
     """
     
-    return {'r2':Config.TEST_R2, 'rmse':Config.TEST_RMSE, 'mae':Config.TEST_MAE}
+    return {
+        'r2': Config.TEST_R2, 
+        'rmse': Config.TEST_RMSE, 
+        'mae': Config.TEST_MAE
+    }
 
 
 def format_purity_display(purity: float, target: float = 0.90) -> Dict:
@@ -397,7 +391,12 @@ def format_purity_display(purity: float, target: float = 0.90) -> Dict:
         Contains: 'purity', 'target', 'difference', 'difference_pct'
     """
         
-    display_dict = {'purity':round(purity,4), 'target':round(target,4), 'difference':round((purity-target), 4), 'difference_pct':round(100*((purity-target)/target), 2)}
+    display_dict = {
+        'purity': round(purity, 4), 
+        'target': round(target, 4), 
+        'difference': round((purity - target), 4), 
+        'difference_pct': round(100 * ((purity - target) / target), 2) if target != 0 else 0
+    }
     
     return display_dict
 
