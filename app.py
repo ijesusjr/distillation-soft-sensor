@@ -221,37 +221,94 @@ else:
 
 
 with st.expander("📊 Model Interpretation - Feature Coefficients"):
-    st.markdown("### Top Features by Coefficient Impact")
+    st.markdown("### Top 15 Features by Coefficient Impact")
     st.markdown("*How each variable directly influences purity in the Linear Regression model*")
+    st.markdown("*Equation: purity = intercept + Σ(coefficient × feature)*")
     
     try:
         coef_df = get_coefficients()
         
-        # Create chart with positive/negative coloring
-        fig, ax = plt.subplots(figsize=(10, 6))
-        colors = ['#4ade80' if x > 0 else '#ef4444' for x in coef_df['Coefficient']]
-        ax.barh(coef_df['Feature'], coef_df['Coefficient'], color=colors)
-        ax.set_xlabel('Coefficient Value')
-        ax.set_title('Top 15 Feature Coefficients - Linear Regression')
-        ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
-        ax.invert_yaxis()
+        # Create TWO charts: one for visualization, one for values
+        col1, col2 = st.columns([2, 1])
         
-        st.pyplot(fig)
-        
-        st.markdown("""
-            **How to Interpret:**
-            - **Green bars** (positive coefficient): ↑ variable → ↑ purity
-            - **Red bars** (negative coefficient): ↑ variable → ↓ purity
-            - **Bar length** = strength of effect (larger = stronger impact)
+        with col1:
+            # Chart 1: Absolute coefficients with directional colors
+            fig, ax = plt.subplots(figsize=(10, 8))
+            colors = ['#10b981' if x > 0 else '#ef4444' for x in coef_df['Coefficient']]
             
-            **Example:** If T1 has coefficient +0.0847, then increasing T1 by 1°C increases purity by 0.0847
+            # Plot with absolute values on x-axis, colors show direction
+            bars = ax.barh(coef_df['Feature'], coef_df['Abs_Coefficient'], color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+            
+            ax.set_xlabel('Absolute Coefficient Magnitude', fontsize=11, fontweight='bold')
+            ax.set_ylabel('Feature', fontsize=11, fontweight='bold')
+            ax.set_title('Top 15 Feature Coefficients - Linear Regression\n(Color shows direction of effect)', fontsize=12, fontweight='bold')
+            ax.invert_yaxis()
+            
+            # Add value labels on bars
+            for i, (bar, coef) in enumerate(zip(bars, coef_df['Coefficient'])):
+                width = bar.get_width()
+                label_text = f"{coef:+.5f}"
+                ax.text(width + 0.001, bar.get_y() + bar.get_height()/2, 
+                       label_text, ha='left', va='center', fontsize=9, fontweight='bold')
+            
+            ax.grid(axis='x', alpha=0.3, linestyle='--')
+            plt.tight_layout()
+            st.pyplot(fig)
+        
+        with col2:
+            st.markdown("**Legend:**")
+            st.markdown("🟢 **Green** = Positive\n↑ Variable → ↑ Purity")
+            st.markdown("🔴 **Red** = Negative\n↑ Variable → ↓ Purity")
+            st.markdown("---")
+            st.markdown("**Example:**\nT1: -0.057\n↑ T1 by 1°C\n→ Purity ↓ 0.057")
+        
+        # Interpretation section
+        st.markdown("### 📖 How to Interpret")
+        st.markdown("""
+        Each coefficient tells you the **direct linear relationship**:
+        
+        - **Coefficient = -0.057 (T1):** Increasing T1 by 1°C → purity DECREASES by 0.057
+        - **Coefficient = +0.036 (L):** Increasing L by 1 unit → purity INCREASES by 0.036
+        - **Larger magnitude** (e.g., |0.057|) = stronger effect
+        - **Smaller magnitude** (e.g., |0.0001|) = negligible effect
+        
+        All coefficients are small because features are **scaled** by StandardScaler during training.
         """)
         
-        # Display coefficients table
-        st.markdown("### Detailed Coefficients")
+        # Display detailed coefficients table
+        st.markdown("### 📋 Detailed Coefficients Table")
+        
         display_df = coef_df[['Feature', 'Coefficient', 'Abs_Coefficient']].copy()
-        display_df.columns = ['Feature', 'Coefficient', 'Absolute Impact']
+        display_df.columns = ['Feature', 'Coefficient (Scaled)', 'Absolute Impact']
+        display_df['Direction'] = display_df['Coefficient (Scaled)'].apply(lambda x: '↑ Positive' if x > 0 else '↓ Negative')
+        
+        # Format for display
+        display_df['Coefficient (Scaled)'] = display_df['Coefficient (Scaled)'].apply(lambda x: f"{x:+.6f}")
+        display_df['Absolute Impact'] = display_df['Absolute Impact'].apply(lambda x: f"{x:.6f}")
+        
         st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+        # Key insights
+        st.markdown("### 💡 Key Insights")
+        
+        col_insight1, col_insight2, col_insight3 = st.columns(3)
+        
+        with col_insight1:
+            st.metric("Strongest Effect", "T1", "-0.057245")
+            st.caption("Temperature DECREASES purity")
+        
+        with col_insight2:
+            st.metric("2nd Strongest", "L", "+0.035683")
+            st.caption("Reflux INCREASES purity")
+        
+        with col_insight3:
+            st.metric("Weakest Effect", "T4_lag30", "+0.000045")
+            st.caption("Negligible impact")
+        
+        st.info("""
+        ℹ️ **Important:** All features are **scaled** (StandardScaler). Coefficients reflect 
+        the impact of 1-unit increase in SCALED space, not original units.
+        """)
         
     except Exception as e:
         st.error(f"Failed to load feature coefficients: {str(e)}")
@@ -373,3 +430,4 @@ st.markdown("""
         <p><em>For demonstration purposes. Not for production use without validation.</em></p>
     </div>
 """, unsafe_allow_html=True)
+

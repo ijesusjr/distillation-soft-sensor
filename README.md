@@ -329,24 +329,32 @@ TEST SET RESULTS (30% of data):
 
 ### **Linear Regression Coefficients**
 
-Top 10 features by absolute coefficient value (direct impact on purity):
+Top 15 features by absolute coefficient value (direct impact on purity):
 
 ```
-Feature         | Coefficient | Interpretation
-────────────────┼─────────────┼──────────────────────────────────
-T1              | +0.0847     | 1-unit ↑ T1 → +0.0847 purity
-T5              | -0.0156     | 1-unit ↑ T5 → -0.0156 purity
-T6              | +0.0143     | 1-unit ↑ T6 → +0.0143 purity
-T4_lag1         | -0.0089     | Lagged temperature effect
-T1_lag5         | +0.0065     | Past temperature influence
-T5_lag1         | -0.0042     | Lagged temperature effect
-L               | +0.0004     | Reflux rate contribution
-T4              | -0.0003     | Mid-column temperature
-T13             | -0.0001     | Column temperature
-B               | +0.0001     | Bottom product rate
+Rank | Feature     | Coefficient | Abs_Coeff | Interpretation
+─────┼─────────────┼─────────────┼───────────┼─────────────────────────────
+  1  | T1          | -0.057245   | 0.057245  | 1-unit ↑ T1 → -0.057 purity ↓
+  2  | L           | +0.035683   | 0.035683  | 1-unit ↑ L → +0.036 purity ↑
+  3  | T13         | -0.022290   | 0.022290  | 1-unit ↑ T13 → -0.022 purity ↓
+  4  | T7          | -0.019203   | 0.019203  | 1-unit ↑ T7 → -0.019 purity ↓
+  5  | T14         | +0.009011   | 0.009011  | 1-unit ↑ T14 → +0.009 purity ↑
+  6  | T6          | +0.007569   | 0.007569  | 1-unit ↑ T6 → +0.008 purity ↑
+  7  | F           | -0.006394   | 0.006394  | 1-unit ↑ F → -0.006 purity ↓
+  8  | T5_lag1     | -0.005933   | 0.005933  | Past T5 → -0.006 purity ↓
+  9  | B           | -0.005286   | 0.005286  | 1-unit ↑ B → -0.005 purity ↓
+ 10  | T5          | -0.003574   | 0.003574  | 1-unit ↑ T5 → -0.004 purity ↓
+ 11  | T4          | +0.003381   | 0.003381  | 1-unit ↑ T4 → +0.003 purity ↑
+ 12  | T4_lag1     | +0.003029   | 0.003029  | Past T4 → +0.003 purity ↑
+ 13  | T4_lag5     | +0.001992   | 0.001992  | Past T4 (5-lag) → +0.002 purity ↑
+ 14  | T1_lag240   | -0.001787   | 0.001787  | Past T1 (24h) → -0.002 purity ↓
+ 15  | T4_lag240   | +0.001654   | 0.001654  | Past T4 (24h) → +0.002 purity ↑
 ```
 
-**Key Insight:** T1 (column top temperature) has the strongest positive impact (+0.0847 coefficient), directly confirming that temperature is the primary driver of purity.
+- **T1 (column top temperature)** has the STRONGEST effect (|-0.057|): ↑ T1 DECREASES purity
+- **L (reflux rate)** is 2nd strongest (+0.036): ↑ L INCREASES purity  
+- **T13 & T7** (mid-column temps) also significant: both DECREASE purity
+- **Lagged features** have much smaller effects, confirming current values dominate
 
 
 ---
@@ -414,15 +422,13 @@ distillation-soft-sensor/
 
 1. **Linear Relationships:** Linear Regression achieves R² = 0.9859, indicating predominantly linear relationships in simulated distillation data.
 
-2. **T1 Dominance:** Column top temperature (T1) is the strongest predictor with coefficient +0.0847, confirming thermodynamic principles.
+2. **Production Efficiency:** Linear model delivers 140x faster inference and 500x smaller footprint vs XGBoost with only 1.39% accuracy loss.
 
-3. **Production Efficiency:** Linear model delivers 140x faster inference and 500x smaller footprint vs XGBoost with only 1.39% accuracy loss.
+3. **Appropriate Feature Engineering:** Lagged features and cyclic encoding capture temporal patterns identified through ACF/PACF analysis.
 
-4. **Appropriate Feature Engineering:** Lagged features and cyclic encoding capture temporal patterns identified through ACF/PACF analysis.
+4. **Production Readiness:** Simple, interpretable Linear Regression is ideal for industrial deployment where reliability, cost, and explainability are priorities.
 
-5. **Production Readiness:** Simple, interpretable Linear Regression is ideal for industrial deployment where reliability, cost, and explainability are priorities.
-
-6. **Real-World Validation Needed:** Deployment on real plant data would require model revalidation; expect lower R² (~0.75-0.85) with non-linear patterns.
+5. **Real-World Validation Needed:** Deployment on real plant data would require model revalidation; expect lower R² (~0.75-0.85) with non-linear patterns.
 
 ---
 
