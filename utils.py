@@ -342,13 +342,21 @@ def get_feature_coefficients(model, feature_names: List[str], top_n: int = 15) -
         Sorted by absolute coefficient value (descending)
     """
    
+    # Use model.feature_names_in_ if available (from sklearn), otherwise use provided feature_names
+    if hasattr(model, 'feature_names_in_'):
+        features = model.feature_names_in_
+    else:
+        features = feature_names
+    
     coef_df = pd.DataFrame({
-        'Feature': feature_names,
+        'Feature': features,
         'Coefficient': model.coef_.flatten()
     })
 
     coef_df['Abs_Coefficient'] = coef_df['Coefficient'].abs()
     coef_df = coef_df.sort_values(by='Abs_Coefficient', ascending=False).head(top_n)
+    # Reset index to keep feature names aligned after sorting
+    coef_df = coef_df.reset_index(drop=True)
     
     return coef_df
 
