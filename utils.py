@@ -1,24 +1,24 @@
 """
 Utility Functions for Distillation Soft-Sensor (Linear Regression)
 ==================================================================
-
+ 
 Helper functions for data preprocessing, scaling, and predictions.
 """
-
+ 
 import numpy as np
 import pandas as pd
 from pathlib import Path
 import joblib
 from typing import Dict, Tuple, List
 import warnings
-
+ 
 warnings.filterwarnings('ignore')
-
-
+ 
+ 
 # ============================================================================
 # CONFIGURATION & PATHS
 # ============================================================================
-
+ 
 class Config:
     """Configuration for the application"""
     
@@ -78,12 +78,12 @@ class Config:
         'good': 0.85,      # Good purity
         'acceptable': 0.75  # Acceptable purity (below this is poor)
     }
-
-
+ 
+ 
 # ============================================================================
 # MODEL LOADING FUNCTIONS
 # ============================================================================
-
+ 
 def load_model(model_path: Path = Config.MODEL_PATH):
     """
     Load trained Linear Regression model
@@ -103,7 +103,7 @@ def load_model(model_path: Path = Config.MODEL_PATH):
     FileNotFoundError
         If model file not found
     """
-
+ 
     try:
         if not model_path.exists():
             raise FileNotFoundError(f"Model not found at {model_path}")
@@ -115,8 +115,8 @@ def load_model(model_path: Path = Config.MODEL_PATH):
     except Exception as e:
         raise RuntimeError(f"Failed to load model: {str(e)}")
     
-
-
+ 
+ 
 def load_scaler(scaler_path: Path = Config.SCALER_PATH):
     """
     Load fitted StandardScaler
@@ -146,8 +146,8 @@ def load_scaler(scaler_path: Path = Config.SCALER_PATH):
         
     except Exception as e:
         raise RuntimeError(f"Failed to load scaler: {str(e)}")
-
-
+ 
+ 
 def load_feature_names(features_path: Path = Config.FEATURES_PATH) -> List[str]:
     """
     Load feature names from training data
@@ -162,7 +162,7 @@ def load_feature_names(features_path: Path = Config.FEATURES_PATH) -> List[str]:
     feature_names : List[str]
         List of feature column names in correct order
     """
-
+ 
     try:
         if not features_path.exists():
             raise FileNotFoundError(f"Features file not found at {features_path}")
@@ -174,11 +174,11 @@ def load_feature_names(features_path: Path = Config.FEATURES_PATH) -> List[str]:
         
     except Exception as e:
         raise RuntimeError(f"Failed to load feature names: {str(e)}")
-
+ 
 # ============================================================================
 # PREPROCESSING FUNCTIONS
 # ============================================================================
-
+ 
 def validate_inputs(inputs: Dict[str, float], feature_names: List[str]) -> Tuple[bool, str]:
     """
     Validate user inputs
@@ -239,8 +239,8 @@ def create_input_dataframe(inputs: Dict[str, float], feature_names: List[str]) -
         f"Expected shape (1, {len(feature_names)}), got {inputs_df.shape}"
     
     return inputs_df
-
-
+ 
+ 
 def scale_inputs(input_df: pd.DataFrame, scaler) -> np.ndarray:
     """
     Scale input features using fitted scaler
@@ -262,18 +262,18 @@ def scale_inputs(input_df: pd.DataFrame, scaler) -> np.ndarray:
         input_scaled = scaler.transform(input_df)
         input_scaled = np.array(input_scaled)
         return input_scaled
-
+ 
     except Exception as e:
         raise RuntimeError(f"Failed to scale inputs: {str(e)}")    
-
-
+ 
+ 
 # ============================================================================
 # PREDICTION FUNCTIONS
 # ============================================================================
-
+ 
 def predict_purity(scaled_inputs: np.ndarray, model) -> float:
     """
-    Make purity prediction
+    Make purity prediction and clip to valid range [0, 1]
     
     Parameters:
     -----------
@@ -287,14 +287,14 @@ def predict_purity(scaled_inputs: np.ndarray, model) -> float:
     prediction : float
         Predicted purity value (clipped to [0, 1])
     """
-
-    purity = float(model.predict(scaled_inputs)[0])
+ 
+    purity = model.predict(scaled_inputs)[0]  # Extract scalar from prediction array
     # Clip to valid purity range
-    purity = np.clip(purity, 0, 1)
+    purity = float(np.clip(purity, 0, 1))
     
     return purity
-
-
+ 
+ 
 def get_prediction_status(purity: float) -> Tuple[str, str, str]:
     """
     Determine purity status and color coding
@@ -320,8 +320,8 @@ def get_prediction_status(purity: float) -> Tuple[str, str, str]:
     else:
         return ('Poor', 'red', '❌')
     
-
-
+ 
+ 
 def get_feature_coefficients(model, feature_names: List[str], top_n: int = 15) -> pd.DataFrame:
     """
     Get feature coefficients from trained Linear Regression model
@@ -352,19 +352,19 @@ def get_feature_coefficients(model, feature_names: List[str], top_n: int = 15) -
         'Feature': features,
         'Coefficient': model.coef_.flatten()
     })
-
+ 
     coef_df['Abs_Coefficient'] = coef_df['Coefficient'].abs()
     coef_df = coef_df.sort_values(by='Abs_Coefficient', ascending=False).head(top_n)
     # Reset index to keep feature names aligned after sorting
     coef_df = coef_df.reset_index(drop=True)
     
     return coef_df
-
-
+ 
+ 
 # ============================================================================
 # ANALYSIS FUNCTIONS
 # ============================================================================
-
+ 
 def get_model_performance() -> Dict[str, float]:
     """
     Get model performance metrics
@@ -380,8 +380,8 @@ def get_model_performance() -> Dict[str, float]:
         'rmse': Config.TEST_RMSE, 
         'mae': Config.TEST_MAE
     }
-
-
+ 
+ 
 def format_purity_display(purity: float, target: float = 0.90) -> Dict:
     """
     Format purity for display
@@ -407,12 +407,12 @@ def format_purity_display(purity: float, target: float = 0.90) -> Dict:
     }
     
     return display_dict
-
-
+ 
+ 
 # ============================================================================
 # ERROR HANDLING & LOGGING
 # ============================================================================
-
+ 
 def create_error_message(error: Exception, context: str) -> str:
     """
     Create user-friendly error message
